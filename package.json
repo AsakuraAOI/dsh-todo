@@ -1,0 +1,55 @@
+{
+  "name": "dsh-todo",
+  "version": "0.3.0",
+  "type": "module",
+  "description": "DSH 待办清单：左侧导航、Agent 工具与可置顶的独立窗口。",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "native",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-theme"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts/build.mjs --check",
+    "test:contracts": "node scripts/check-contracts.mjs",
+    "test:electron": "node scripts/electron-smoke.mjs"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AsakuraAOI/dsh-todo.git"
+  },
+  "homepage": "https://github.com/AsakuraAOI/dsh-todo#readme",
+  "bugs": {
+    "url": "https://github.com/AsakuraAOI/dsh-todo/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness"
+  ]
+}
