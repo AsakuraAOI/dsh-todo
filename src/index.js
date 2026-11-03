@@ -1,3 +1,4 @@
+import { registerPluginSettings } from "../plugin-settings.js";
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { TodoStore, fail } from './store.js';
@@ -38,6 +39,7 @@ export function createHandler(store, popup) {
 }
 
 export function apply(ctx) {
+  registerPluginSettings(ctx);
   const root = join(homedir(), '.dsh', 'storages', 'dsh-todo');
   const store = new TodoStore(join(root, 'todos.json')), popup = new TodoWindow(store, root);
   ctx.effect(() => () => popup.dispose());
@@ -56,8 +58,9 @@ export function apply(ctx) {
   });
   const change = async args => { const { item, revision } = await store.mutate(args); return { item, revision }; };
   const dueAt = { oneOf: [{ type: 'string' }, { type: 'null' }], description: '可选倒计时的截止时间，带时区的 ISO 日期时间（如 2026-10-18T18:00:00+08:00）。省略保留现状，null 取消倒计时。列表默认按截止时间从早到晚排序，无截止时间的放最后。' };
-  register('todo_add', '向用户的待办清单添加一项，可选设置倒计时截止时间。标题和描述保持简短，完整内容放 details。仅在用户要求记录待办时使用，不把 Agent 自己的执行步骤加入用户清单。', { title: str('简短待办标题，最多 300 字。'), notes: str('可选的简短描述，最多 200 字；完整内容请放 details。'), details: str('可选完整详情，最多 20000 字，支持换行；点击待办后查看。'), dueAt }, ['title'], args => change({ ...args, action: 'add' }));
+  const source = { type: 'object', description: '可选的插件来源元数据，不显示在待办正文。相同 provider/id 重复添加只返回原待办；编辑不会更换已绑定来源。', properties: { provider: str('来源插件名称。'), id: str('来源内稳定且唯一的记录 ID。') }, required: ['provider', 'id'], additionalProperties: false };
+  register('todo_add', '向用户的待办清单添加一项，可选设置倒计时截止时间。标题和描述保持简短，完整内容放 details。仅在用户要求记录待办时使用，不把 Agent 自己的执行步骤加入用户清单。', { title: str('简短待办标题，最多 300 字。'), notes: str('可选的简短描述，最多 200 字；完整内容请放 details。'), details: str('可选完整详情，最多 20000 字，支持换行；点击待办后查看。'), dueAt, source }, ['title'], args => change({ ...args, action: 'add' }));
   register('todo_update', '修改一条用户待办的标题、简短描述、完整详情或状态。先用 todo_list 取得 id 和 version。complete=已完成；end=不再继续，保留记录；reopen=恢复进行中。', {
-    id: str('todo_list 返回的待办 id。'), action: { type: 'string', enum: ['update', 'complete', 'end', 'reopen'] }, title: str('新标题，保持简短。'), notes: str('简短描述，最多 200 字，空字符串清空。'), details: str('完整详情，最多 20000 字，空字符串清空。'), dueAt, expectedVersion: { type: 'integer', description: '读取到的正整数 version，防止覆盖另一处的新修改。' },
+    id: str('todo_list 返回的待办 id。'), action: { type: 'string', enum: ['update', 'complete', 'end', 'reopen'] }, title: str('新标题，保持简短。'), notes: str('简短描述，最多 200 字，空字符串清空。'), details: str('完整详情，最多 20000 字，空字符串清空。'), dueAt, source, expectedVersion: { type: 'integer', description: '读取到的正整数 version，防止覆盖另一处的新修改。' },
   }, ['id', 'action', 'expectedVersion'], change);
 }

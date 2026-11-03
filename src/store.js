@@ -9,6 +9,11 @@ const text = (value, label, max, empty = false) => {
   if (typeof value !== 'string' || value.trim().length > max || (!empty && !value.trim())) throw fail(`${label}需为${empty ? '不超过' : '1 至'} ${max} 字的文字。`);
   return value.trim();
 };
+export function normalizeSource(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['provider', 'id'].includes(key))) throw fail('来源标识格式无效。');
+  return { provider: text(value.provider, '来源名称', 64), id: text(value.id, '来源 ID', 256) };
+}
+const sameSource = (left, right) => Boolean(left && right && left.provider === right.provider && left.id === right.id);
 
 export class TodoStore {
   constructor(file) { this.file = file; }
@@ -21,6 +26,10 @@ export class TodoStore {
       (item.details === undefined || typeof item.details === 'string') &&
       Number.isSafeInteger(item.version) && item.version > 0 && typeof item.createdAt === 'string' && typeof item.updatedAt === 'string');
     if (!valid || new Set(data.items.map(item => item.id)).size !== data.items.length) throw fail('待办数据格式无效，已停止写入以保护原数据。', 500);
+    try {
+      const sources = data.items.filter(item => item.source !== undefined).map(item => JSON.stringify(normalizeSource(item.source)));
+      if (new Set(sources).size !== sources.length) throw new Error();
+    } catch { throw fail('待办来源元数据无效或重复，已停止写入以保护原数据。', 500); }
     try { data.items = data.items.map(item => ({ ...item, dueAt: normalizeDueAt(item.dueAt), details: item.details ?? item.notes,
       notes: item.details === undefined ? item.notes.replace(/\s+/g, ' ').slice(0, 180) : item.notes })); }
     catch { throw fail('待办截止时间数据无效，已停止写入以保护原数据。', 500); }
@@ -56,6 +65,7 @@ export class TodoStore {
     if (!['add', 'update', 'complete', 'reopen', 'end'].includes(action)) throw fail('不支持的待办操作。');
     if (args.expectedVersion !== undefined && (!Number.isSafeInteger(args.expectedVersion) || args.expectedVersion < 1)) throw fail('待办版本必须为正整数。');
     let dueAt;
+    const source = args.source === undefined ? undefined : normalizeSource(args.source);
     if (Object.hasOwn(args, 'dueAt')) {
       try { dueAt = normalizeDueAt(args.dueAt); } catch (error) { throw fail(error.message); }
     }
@@ -65,15 +75,25 @@ export class TodoStore {
       const data = await this.list(), now = new Date().toISOString();
       let item;
       if (action === 'add') {
+        // Idempotency is enforced under the same lock as insertion. Metadata is
+        // separate from visible text, so a caller can retry after a lost reply.
+        const existing = source && data.items.find(row => sameSource(row.source, source));
+        if (existing) return { ...data, item: existing, reused: true };
         if (data.items.length >= 10000) throw fail('待办已达 10000 条上限。');
         item = { id: randomUUID(), title: text(args.title, '标题', 300), notes: text(args.notes ?? '', '简短描述', 200, true), details: text(args.details ?? '', '详情', 20000, true), dueAt: dueAt ?? null, status: 'active', version: 1, createdAt: now, updatedAt: now };
+        if (source) item.source = source;
         data.items.unshift(item);
       } else {
         item = data.items.find(row => row.id === args.id);
         if (!item) throw fail('待办不存在，请刷新清单。', 404);
         if (args.expectedVersion !== undefined && args.expectedVersion !== item.version) throw fail('这条待办已在另一处更新，请刷新后重试。', 409);
         if (action === 'update') {
-          if (args.title === undefined && args.notes === undefined && args.details === undefined && dueAt === undefined) throw fail('请提供要修改的标题、描述、详情或截止时间。');
+          if (args.title === undefined && args.notes === undefined && args.details === undefined && dueAt === undefined && source === undefined) throw fail('请提供要修改的标题、描述、详情、截止时间或来源。');
+          if (source) {
+            if (item.source && !sameSource(item.source, source)) throw fail('已绑定的来源不能更换。', 409);
+            if (data.items.some(row => row.id !== item.id && sameSource(row.source, source))) throw fail('该来源已绑定另一条待办。', 409);
+            item.source = source;
+          }
           if (args.title !== undefined) item.title = text(args.title, '标题', 300);
           if (args.notes !== undefined) item.notes = text(args.notes, '简短描述', 200, true);
           if (args.details !== undefined) item.details = text(args.details, '详情', 20000, true);

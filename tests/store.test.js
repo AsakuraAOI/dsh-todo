@@ -25,6 +25,23 @@ test('persistent lifecycle, version conflicts and restoration keep history', asy
   assert.equal(item.status, 'active'); assert.equal(item.notes, '');
   assert.deepEqual((await new TodoStore(store.file).list()).items, [item]);
 });
+test('source metadata deduplicates atomically without putting identity in visible text', async t => {
+  const store = await fixture(t), source = { provider: 'kasumiflow', id: 'homework-1' };
+  const results = await Promise.all([store.mutate({ action: 'add', title: '作业一', details: '正常中文要求', source }), new TodoStore(store.file).mutate({ action: 'add', title: '重试', source })]);
+  assert.equal(results[0].item.id, results[1].item.id); assert.equal((await store.list()).items.length, 1);
+  const first = (await store.list()).items[0]; assert.deepEqual(first.source, source); assert.ok(!first.details.includes('kasumiflow'));
+  await store.mutate({ action: 'complete', id: first.id, expectedVersion: first.version });
+  const reused = await store.mutate({ action: 'add', title: '重复调用', source }); assert.equal(reused.item.status, 'completed'); assert.equal(reused.reused, true);
+});
+test('legacy items can gain metadata without changing status and cannot steal another source', async t => {
+  const store = await fixture(t); const first = (await store.mutate({ action: 'add', title: '旧作业' })).item;
+  await store.mutate({ action: 'end', id: first.id });
+  let item = (await store.mutate({ action: 'update', id: first.id, source: { provider: 'kasumiflow', id: 'one' } })).item;
+  assert.equal(item.status, 'ended'); assert.equal((await new TodoStore(store.file).list()).items[0].source.id, 'one');
+  await assert.rejects(store.mutate({ action: 'update', id: item.id, source: { provider: 'kasumiflow', id: 'two' } }), /不能更换/);
+  const second = (await store.mutate({ action: 'add', title: '另一条' })).item;
+  await assert.rejects(store.mutate({ action: 'update', id: second.id, source: { provider: 'kasumiflow', id: 'one' } }), /另一条/);
+});
 test('independent store writers preserve all concurrent additions', async t => {
   const store = await fixture(t);
   await Promise.all(Array.from({ length: 20 }, (_, i) => new TodoStore(store.file).mutate({ action: 'add', title: `事项 ${i}` })));

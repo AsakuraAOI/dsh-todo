@@ -19,6 +19,8 @@ apply({ effect(fn) { const dispose = fn(); if (dispose) disposers.push(dispose);
 try {
   for (const tool of tools.values()) { assertSupportedJsonSchema(tool.parameters); assertSupportedJsonSchema(tool.output.schema); }
   assert.deepEqual(validateJsonSchemaValue(tools.get('todo_update').parameters, { id: 'x', action: 'end', expectedVersion: 1 }), []);
+  assert.deepEqual(validateJsonSchemaValue(tools.get('todo_add').parameters, { title: '学习事务', source: { provider: 'kasumiflow', id: 'assignment-1' } }), []);
+  assert.deepEqual(validateJsonSchemaValue(tools.get('todo_update').parameters, { id: 'x', action: 'update', expectedVersion: 1, source: { provider: 'kasumiflow', id: 'assignment-1' } }), []);
   const sidebar = await readFile(join(base, 'dsh-client-ui-sidebar/lib/client.js'), 'utf8');
   const manager = await readFile(join(base, 'dsh-client-ui-plugin-manager/lib/client.js'), 'utf8');
   assert.ok(sidebar.includes('"sidebar.panellist"') && sidebar.includes('selectPanel(id)'));
